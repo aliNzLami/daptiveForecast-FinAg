@@ -4,7 +4,7 @@ from scipy.stats import skew, kurtosis
 
 def load_and_clean_data(file_path):
     df = pd.read_csv(file_path)
-    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
+    df["Date"] = pd.to_datetime(df["Date"], format='mixed')
     df = df.sort_values("Date").reset_index(drop=True)
     return df
 
