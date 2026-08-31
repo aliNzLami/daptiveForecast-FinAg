@@ -26,7 +26,7 @@ jobs:
           pip install numpy pandas
 
       - name: Run calibration script
-        run: python decision-ml-models/calibrate_us_crop.py
+        run: python decision-ml-models/calibrate.py
 
       - name: Commit and push results
         run: |
