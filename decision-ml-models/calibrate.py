@@ -113,6 +113,7 @@ def compute_context_from_df(df, target_col='Corn_Price_USD', E=0.5):
 
 def load_dataset():
     paths = [
+        "dataset/US_Agriculture_Weather_2010_2024.csv",
         "../dataset/US_Agriculture_Weather_2010_2024.csv",
         "US_Agriculture_Weather_2010_2024.csv"
     ]
