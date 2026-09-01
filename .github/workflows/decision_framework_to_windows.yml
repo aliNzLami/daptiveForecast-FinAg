@@ -26,7 +26,7 @@ jobs:
           pip install pandas numpy
 
       - name: Run framework
-        run: python apply_framework_to_windows.py
+        run: python decision_framework_to_windows.py
 
       - name: Commit and push results
         run: |
