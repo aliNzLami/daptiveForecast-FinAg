@@ -1,0 +1,47 @@
+name: Evaluate Top Two Models per Window
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  evaluate-models:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy scikit-learn xgboost lightgbm
+
+      - name: Run evaluation script
+        run: python decision-ml-models/evaluate_top_models.py
+
+      - name: Debug - list files
+        run: |
+          ls -la
+          ls -la dataset/ || echo "dataset folder not found"
+
+      - name: Commit and push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f "top_models_performance.csv" ]; then
+            git add top_models_performance.csv
+            git commit -m "Add top models performance comparison [skip ci]" || echo "No changes to commit"
+            git push
+          else
+            echo "File top_models_performance.csv not found. Skipping commit."
+            exit 1
+          fi
