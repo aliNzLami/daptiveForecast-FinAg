@@ -31,8 +31,8 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.join(base_dir, "..", "dataset", "US_Agriculture_Weather_2010_2024.csv")
     windows_path = os.path.join(base_dir, "..", "dataset", "window_features.csv")
-    rankings_path = os.path.join(base_dir, "..", "model_rankings.csv")
-    output_path = os.path.join(base_dir, "..", "top_models_performance.csv")
+    rankings_path = os.path.join(base_dir, "..", "dataset", "model_rankings.csv")
+    output_path = os.path.join(base_dir, "..", "dataset", "top_models_performance.csv")
 
     print(f"Base directory: {base_dir}")
     print(f"Main data path: {main_path}")
