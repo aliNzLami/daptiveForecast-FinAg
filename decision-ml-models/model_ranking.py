@@ -12,6 +12,47 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
 
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def tanh(x):
+    return np.tanh(x)
+
+def compute_context_from_window(row):
+    V = np.log10(90) / 6
+    N = 0.3 * (row["corn_std"] / 50) + 0.3 * (row["volatility"] / 0.05) + 0.4 * (1 - abs(row["corr_price_temp"]))
+    N = min(1.0, max(0.0, N))
+    G = 0.5
+    rho = 15 / 90
+    E = 0.5
+    return np.array([V, N, G, rho, E])
+
+def compute_requirements(ctx, a1, a2, a3, a4):
+    V, N, G, rho, E = ctx
+    b1, b2, b3, b4 = 1 - a1, 1 - a2, 1 - a3, 1 - a4
+    r_interp = a1 * (1 - sigmoid(10 * (E - 0.5))) + b1 * rho
+    r_robust = a2 * sigmoid(12 * (N - 0.35)) + b2 * tanh(2 * rho)
+    r_scal = a3 * tanh(3 * V) + b3 * G
+    r_rep = a4 * G + b4 * E
+    return np.array([r_interp, r_robust, r_scal, r_rep])
+
+def get_model_profiles():
+    return {
+        "Random Forest": np.array([0.50, 0.80, 0.50, 0.80]),
+        "XGBoost": np.array([0.30, 0.80, 0.80, 0.90]),
+        "LightGBM": np.array([0.30, 0.80, 0.90, 0.90]),
+        "Hidden Markov Model": np.array([0.80, 0.50, 0.30, 0.50]),
+        "KNeighborsTimeSeries": np.array([0.80, 0.40, 0.50, 0.50])
+    }
+
+def manhattan_score(req, cap, weights):
+    return 1.0 - np.sum(weights * np.abs(req - cap))
+
+def get_requirement_weights():
+    alpha, gamma, zeta, theta = 0.60, 0.55, 0.50, 0.85
+    total = alpha + gamma + zeta + theta
+    return np.array([alpha, gamma, zeta, theta]) / total
+
 def get_model_instance(model_name):
     model_name = model_name.strip()
     if model_name == "Random Forest":
@@ -29,42 +70,69 @@ def get_model_instance(model_name):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    main_path = os.path.join(base_dir, "..", "dataset", "US_Agriculture_Weather_2010_2024.csv")
-    windows_path = os.path.join(base_dir, "..", "dataset", "window_features.csv")
-    rankings_path = os.path.join(base_dir, "..", "dataset", "model_rankings.csv")
-    output_path = os.path.join(base_dir, "..", "dataset", "top_models_performance.csv")
+    project_root = os.path.dirname(base_dir)
 
-    print(f"Base directory: {base_dir}")
-    print(f"Main data path: {main_path}")
+    windows_path = os.path.join(project_root, "dataset", "window_features.csv")
+    main_path = os.path.join(project_root, "dataset", "US_Agriculture_Weather_2010_2024.csv")
+    ranking_output = os.path.join(project_root, "model_rankings.csv")
+    performance_output = os.path.join(project_root, "top_models_performance.csv")
+
+    print(f"Project root: {project_root}")
     print(f"Windows path: {windows_path}")
-    print(f"Rankings path: {rankings_path}")
+    print(f"Main data path: {main_path}")
 
-    if not os.path.exists(main_path):
-        print("Error: Main dataset not found.")
-        sys.exit(1)
     if not os.path.exists(windows_path):
-        print("Error: Window features not found.")
+        print("Error: window_features.csv not found.")
         sys.exit(1)
-    if not os.path.exists(rankings_path):
-        print("Error: Model rankings not found.")
-        sys.exit(1)
+
+    # ============= PART 1: GENERATE RANKINGS =============
+    df_windows = pd.read_csv(windows_path)
+    df_windows["window_start"] = pd.to_datetime(df_windows["window_start"])
+    df_windows["window_end"] = pd.to_datetime(df_windows["window_end"])
+
+    model_profiles = get_model_profiles()
+    req_weights = get_requirement_weights()
+
+    ranking_results = []
+    for idx, row in df_windows.iterrows():
+        ctx = compute_context_from_window(row)
+        req = compute_requirements(ctx, 0.60, 0.55, 0.50, 0.85)
+
+        score_dict = {}
+        for name, cap in model_profiles.items():
+            score_dict[name] = manhattan_score(req, cap, req_weights)
+
+        sorted_models = sorted(score_dict.items(), key=lambda x: x[1], reverse=True)
+        best_model, best_score = sorted_models[0]
+        second_model, second_score = sorted_models[1]
+
+        ranking_results.append({
+            "window_start": row["window_start"],
+            "window_end": row["window_end"],
+            "best_model": best_model,
+            "best_score": round(best_score, 4),
+            "second_model": second_model,
+            "second_score": round(second_score, 4),
+            "score_gap": round(best_score - second_score, 4)
+        })
+
+    df_rankings = pd.DataFrame(ranking_results)
+    df_rankings.to_csv(ranking_output, index=False)
+    print(f"model_rankings.csv generated at {ranking_output}")
+
+    # ============= PART 2: EVALUATE PERFORMANCE =============
+    if not os.path.exists(main_path):
+        print("Error: Main dataset not found. Skipping performance evaluation.")
+        return
 
     df_main = pd.read_csv(main_path)
     df_main["Date"] = pd.to_datetime(df_main["Date"])
     df_main = df_main.sort_values("Date").reset_index(drop=True)
 
-    df_windows = pd.read_csv(windows_path)
-    df_windows["window_start"] = pd.to_datetime(df_windows["window_start"])
-    df_windows["window_end"] = pd.to_datetime(df_windows["window_end"])
-
-    df_rankings = pd.read_csv(rankings_path)
-    df_rankings["window_start"] = pd.to_datetime(df_rankings["window_start"])
-    df_rankings["window_end"] = pd.to_datetime(df_rankings["window_end"])
-
     price_dict = dict(zip(df_main["Date"], df_main["Corn_Price_USD"]))
     features = ["Max_Temp_C", "Min_Temp_C", "Precipitation_mm"]
 
-    results = []
+    performance_results = []
 
     for idx, row in df_rankings.iterrows():
         start = row["window_start"]
@@ -121,25 +189,23 @@ def main():
         else:
             result_row["rmse_gap"] = None
 
-        results.append(result_row)
+        performance_results.append(result_row)
 
-    if not results:
-        print("No results generated. Check data.")
-        sys.exit(1)
+    if performance_results:
+        df_performance = pd.DataFrame(performance_results)
+        df_performance.to_csv(performance_output, index=False)
+        print(f"top_models_performance.csv generated at {performance_output}")
 
-    df_results = pd.DataFrame(results)
-    df_results.to_csv(output_path, index=False)
-    print(f"Performance metrics saved to {output_path}")
-    print(f"Total windows evaluated: {len(df_results)}")
-
-    valid = df_results.dropna(subset=["best_rmse", "second_rmse"])
-    if len(valid) > 0:
-        print(f"\nAverage RMSE - Best Model: {valid['best_rmse'].mean():.4f}")
-        print(f"Average RMSE - Second Model: {valid['second_rmse'].mean():.4f}")
-        best_wins = (valid['best_rmse'] < valid['second_rmse']).sum()
-        second_wins = (valid['second_rmse'] < valid['best_rmse']).sum()
-        print(f"Best model wins in {best_wins} windows")
-        print(f"Second model wins in {second_wins} windows")
+        valid = df_performance.dropna(subset=["best_rmse", "second_rmse"])
+        if len(valid) > 0:
+            print(f"\nAverage RMSE - Best Model: {valid['best_rmse'].mean():.4f}")
+            print(f"Average RMSE - Second Model: {valid['second_rmse'].mean():.4f}")
+            best_wins = (valid['best_rmse'] < valid['second_rmse']).sum()
+            second_wins = (valid['second_rmse'] < valid['best_rmse']).sum()
+            print(f"Best model wins in {best_wins} windows")
+            print(f"Second model wins in {second_wins} windows")
+    else:
+        print("No performance results generated.")
 
 if __name__ == "__main__":
     main()
