@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -43,7 +44,11 @@ def get_requirement_weights():
     return np.array([alpha, gamma, zeta, theta]) / total
 
 def main():
-    df_windows = pd.read_csv("window_features.csv")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    input_path = os.path.join(base_dir, "..", "dataset", "window_features.csv")
+    output_path = os.path.join(base_dir, "..", "model_recommendations.csv")
+
+    df_windows = pd.read_csv(input_path)
     df_windows["window_start"] = pd.to_datetime(df_windows["window_start"])
     df_windows["window_end"] = pd.to_datetime(df_windows["window_end"])
 
@@ -69,8 +74,8 @@ def main():
     df_windows["recommended_model"] = recommendations
     df_windows["compatibility_score"] = scores
 
-    df_windows.to_csv("model_recommendations.csv", index=False)
-    print("model_recommendations.csv generated successfully with all original features.")
+    df_windows.to_csv(output_path, index=False)
+    print(f"model_recommendations.csv generated successfully at: {output_path}")
 
 if __name__ == "__main__":
     main()
