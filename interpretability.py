@@ -6,8 +6,7 @@ import warnings
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from sklearn.metrics import classification_report, accuracy_score
 import shap
 import lime
 import lime.lime_tabular
@@ -16,7 +15,7 @@ warnings.filterwarnings('ignore')
 
 def load_data():
     base_dir = os.getcwd()
-    transitions_path = os.path.join(base_dir, "dataset", "transition_points.csv")
+    transitions_path = os.path.join(base_dir, "transition_points.csv")
     windows_path = os.path.join(base_dir, "dataset", "window_features.csv")
     main_path = os.path.join(base_dir, "dataset", "US_Agriculture_Weather_2010_2024.csv")
 
@@ -88,26 +87,6 @@ def extract_unique_windows(df_transitions, df_windows):
 
     return df_all
 
-def extract_daily_data(df_windows, df_main):
-    daily_data = []
-    for _, row in df_windows.iterrows():
-        start_date = row["window_start"]
-        end_date = row["window_end"]
-        mask = (df_main["Date"] >= start_date) & (df_main["Date"] <= end_date)
-        daily_chunk = df_main[mask].copy()
-        daily_chunk["window_start"] = start_date
-        daily_chunk["window_end"] = end_date
-        daily_data.append(daily_chunk)
-
-    if not daily_data:
-        return pd.DataFrame()
-
-    df_daily = pd.concat(daily_data, ignore_index=True)
-    df_daily = df_daily.drop_duplicates(subset=["Date"])
-    df_daily = df_daily.sort_values("Date").reset_index(drop=True)
-
-    return df_daily
-
 def main():
     print("Loading data...")
     df_transitions, df_windows, df_main = load_data()
@@ -175,12 +154,17 @@ def main():
     explainer_shap = shap.TreeExplainer(rf_model)
     shap_values = explainer_shap.shap_values(X_scaled)
 
+    # پردازش صحیح shap_values
     if isinstance(shap_values, list):
-        shap_values = np.array(shap_values)
+        shap_importance_per_class = [np.abs(sv).mean(axis=0) for sv in shap_values]
+        shap_importance_mean = np.mean(shap_importance_per_class, axis=0)
+    else:
+        shap_importance_mean = np.abs(shap_values).mean(axis=0)
 
-    shap_importance_mean = np.abs(shap_values).mean(axis=0)
-    if len(shap_importance_mean.shape) > 1:
-        shap_importance_mean = shap_importance_mean.mean(axis=0)
+    shap_importance_mean = np.array(shap_importance_mean).flatten()
+
+    if len(shap_importance_mean) != len(feature_cols):
+        raise ValueError(f"Length mismatch: shap_importance_mean ({len(shap_importance_mean)}) != feature_cols ({len(feature_cols)})")
 
     shap_df = pd.DataFrame({
         "feature": feature_cols,
