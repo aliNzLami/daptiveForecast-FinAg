@@ -5,7 +5,7 @@ import json
 import warnings
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import shap
 import lime
@@ -15,7 +15,7 @@ warnings.filterwarnings('ignore')
 
 def load_data():
     base_dir = os.getcwd()
-    transitions_path = os.path.join(base_dir, "dataset", "transition_points.csv")
+    transitions_path = os.path.join(base_dir, "transition_points.csv")
     windows_path = os.path.join(base_dir, "dataset", "window_features.csv")
     main_path = os.path.join(base_dir, "dataset", "US_Agriculture_Weather_2010_2024.csv")
 
@@ -85,52 +85,55 @@ def extract_window_features(df_windows, transition_date, window_days=30):
     ]
     return window_rows
 
-def compute_shap_and_lime(model, X_train, X_test, feature_names, class_names, model_name, target_regime):
+def compute_shap_and_lime(model, X_train, y_train, X_test, feature_names, class_names, model_name):
     results = {}
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    model.fit(X_train_scaled, y_train)
+    le = LabelEncoder()
+    y_train_enc = le.fit_transform(y_train)
+    model.fit(X_train_scaled, y_train_enc)
 
-    y_pred = model.predict(X_test_scaled)
-    if target_regime is not None:
-        le = LabelEncoder()
-        y_train_enc = le.fit_transform(target_regime)
-        model.fit(X_train_scaled, y_train_enc)
-        y_pred_enc = model.predict(X_test_scaled)
-        y_pred = le.inverse_transform(y_pred_enc)
+    y_pred_enc = model.predict(X_test_scaled)
+    y_pred = le.inverse_transform(y_pred_enc.astype(int))
 
     explainer_shap = shap.TreeExplainer(model)
     shap_values = explainer_shap.shap_values(X_test_scaled)
 
-    shap_df = pd.DataFrame(shap_values, columns=feature_names)
     shap_importance = np.abs(shap_values).mean(axis=0)
+    results["shap_importance"] = dict(zip(feature_names, shap_importance))
 
     explainer_lime = lime.lime_tabular.LimeTabularExplainer(
         X_train_scaled,
         feature_names=feature_names,
-        class_names=np.unique(target_regime) if target_regime is not None else None,
-        mode='classification' if target_regime is not None else 'regression',
+        class_names=le.classes_,
+        mode='classification',
         verbose=False
     )
 
     lime_explanations = []
-    lime_importance = []
     for i in range(min(5, len(X_test_scaled))):
         exp = explainer_lime.explain_instance(
             X_test_scaled[i],
-            model.predict_proba if target_regime is not None else model.predict,
+            model.predict_proba,
             num_features=5
         )
-        exp_dict = exp.as_list()
-        lime_explanations.append(exp_dict)
-        for feature, weight in exp_dict:
-            lime_importance.append({"feature": feature, "weight": weight})
+        lime_explanations.append(exp.as_list())
 
-    results["shap_importance"] = dict(zip(feature_names, shap_importance))
     results["lime_explanations"] = lime_explanations
+
+    lime_importance = {}
+    for exp_list in lime_explanations:
+        for feature, weight in exp_list:
+            if feature not in lime_importance:
+                lime_importance[feature] = []
+            lime_importance[feature].append(weight)
+
+    for feature in lime_importance:
+        lime_importance[feature] = np.mean(lime_importance[feature])
+
     results["lime_importance"] = lime_importance
 
     return results
@@ -173,36 +176,35 @@ def main():
             continue
 
         results_entry = {
-            "transition_date": trans_date,
+            "transition_date": str(trans_date),
             "from_model": from_model,
             "to_model": to_model,
             "window_count": len(window_rows)
         }
 
-        X_train = X
-        y_train = y_regime
-
         print(f"Processing transition at {trans_date} ({from_model} -> {to_model})")
 
         try:
-            from_shap = compute_shap_and_lime(
-                from_model_instance, X_train, X_train,
-                feature_cols, np.unique(y_regime), from_model, y_regime
+            from_results = compute_shap_and_lime(
+                from_model_instance, X, y_regime, X,
+                feature_cols, np.unique(y_regime), from_model
             )
-            results_entry["from_model_shap"] = from_shap["shap_importance"]
+            results_entry["from_model_shap"] = from_results["shap_importance"]
+            results_entry["from_model_lime"] = from_results["lime_importance"]
         except Exception as e:
-            results_entry["from_model_shap"] = {"error": str(e)}
-            print(f"  Failed SHAP for {from_model}: {e}")
+            results_entry["from_model_error"] = str(e)
+            print(f"  Failed for {from_model}: {e}")
 
         try:
-            to_shap = compute_shap_and_lime(
-                to_model_instance, X_train, X_train,
-                feature_cols, np.unique(y_regime), to_model, y_regime
+            to_results = compute_shap_and_lime(
+                to_model_instance, X, y_regime, X,
+                feature_cols, np.unique(y_regime), to_model
             )
-            results_entry["to_model_shap"] = to_shap["shap_importance"]
+            results_entry["to_model_shap"] = to_results["shap_importance"]
+            results_entry["to_model_lime"] = to_results["lime_importance"]
         except Exception as e:
-            results_entry["to_model_shap"] = {"error": str(e)}
-            print(f"  Failed SHAP for {to_model}: {e}")
+            results_entry["to_model_error"] = str(e)
+            print(f"  Failed for {to_model}: {e}")
 
         all_results.append(results_entry)
 
@@ -216,27 +218,28 @@ def main():
     print(f"Analysis complete. Results saved to {output_path}")
     print(f"Total transitions processed: {len(all_results)}")
 
-    summary_df = []
+    summary_rows = []
     for res in all_results:
         if "from_model_shap" in res and "to_model_shap" in res:
-            if "error" not in res["from_model_shap"] and "error" not in res["to_model_shap"]:
+            if "error" not in str(res.get("from_model_shap", {})) and "error" not in str(res.get("to_model_shap", {})):
                 from_imp = res["from_model_shap"]
                 to_imp = res["to_model_shap"]
-                common_features = set(from_imp.keys()) & set(to_imp.keys())
-                for feat in common_features:
-                    summary_df.append({
-                        "transition_date": res["transition_date"],
-                        "from_model": res["from_model"],
-                        "to_model": res["to_model"],
-                        "feature": feat,
-                        "from_model_importance": from_imp.get(feat, 0),
-                        "to_model_importance": to_imp.get(feat, 0),
-                        "agreement": "high" if abs(from_imp.get(feat, 0) - to_imp.get(feat, 0)) < 0.1 else "low"
-                    })
+                if isinstance(from_imp, dict) and isinstance(to_imp, dict):
+                    common_features = set(from_imp.keys()) & set(to_imp.keys())
+                    for feat in common_features:
+                        summary_rows.append({
+                            "transition_date": res["transition_date"],
+                            "from_model": res["from_model"],
+                            "to_model": res["to_model"],
+                            "feature": feat,
+                            "from_model_importance": from_imp.get(feat, 0),
+                            "to_model_importance": to_imp.get(feat, 0),
+                            "agreement": "high" if abs(from_imp.get(feat, 0) - to_imp.get(feat, 0)) < 0.1 else "low"
+                        })
 
-    if summary_df:
+    if summary_rows:
         summary_path = os.path.join(output_dir, "feature_agreement_analysis.csv")
-        pd.DataFrame(summary_df).to_csv(summary_path, index=False)
+        pd.DataFrame(summary_rows).to_csv(summary_path, index=False)
         print(f"Feature agreement analysis saved to {summary_path}")
 
     print("\nDone.")
