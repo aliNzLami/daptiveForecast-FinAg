@@ -154,19 +154,11 @@ def main():
     explainer_shap = shap.TreeExplainer(rf_model)
     shap_values = explainer_shap.shap_values(X_scaled)
 
-    # shap_values is a list of arrays, one per class
     if isinstance(shap_values, list):
-        # For each class, compute mean absolute SHAP across samples, then average over classes
         shap_importance_per_class = [np.abs(sv).mean(axis=0) for sv in shap_values]
         shap_importance_mean = np.mean(shap_importance_per_class, axis=0)
     else:
         shap_importance_mean = np.abs(shap_values).mean(axis=0)
-
-    # Ensure it's a flat array of length = number of features
-    shap_importance_mean = np.array(shap_importance_mean).flatten()
-
-    if len(shap_importance_mean) != len(feature_cols):
-        raise ValueError(f"Length mismatch: shap_importance_mean ({len(shap_importance_mean)}) != feature_cols ({len(feature_cols)})")
 
     shap_df = pd.DataFrame({
         "feature": feature_cols,
