@@ -1,0 +1,114 @@
+[
+  {
+    "transition_date": "2011-01-28 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "window_count": 2
+  },
+  {
+    "transition_date": "2011-09-01 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "window_count": 2
+  },
+  {
+    "transition_date": "2015-06-29 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 3"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 3"
+    },
+    "window_count": 3
+  },
+  {
+    "transition_date": "2015-08-11 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 4"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 4"
+    },
+    "window_count": 4
+  },
+  {
+    "transition_date": "2016-09-06 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "window_count": 2
+  },
+  {
+    "transition_date": "2019-06-11 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 4"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 4"
+    },
+    "window_count": 4
+  },
+  {
+    "transition_date": "2021-06-18 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 2"
+    },
+    "window_count": 2
+  },
+  {
+    "transition_date": "2021-08-02 00:00:00",
+    "from_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 3"
+    },
+    "to_model": {
+      "shap": {},
+      "lime": {},
+      "error": "Not enough samples: 3"
+    },
+    "window_count": 3
+  }
+]
