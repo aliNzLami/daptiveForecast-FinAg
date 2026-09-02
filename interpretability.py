@@ -186,6 +186,9 @@ def main():
         else:
             shap_importance_mean = np.abs(shap_values).mean(axis=0)
 
+        if shap_importance_mean.shape[0] != len(feature_cols):
+            raise ValueError(f"SHAP importance shape mismatch: {shap_importance_mean.shape[0]} vs {len(feature_cols)}")
+
         shap_df = pd.DataFrame({
             "feature": feature_cols,
             "shap_importance": shap_importance_mean
@@ -208,7 +211,7 @@ def main():
             class_names=le.classes_,
             mode='classification',
             verbose=False,
-            discretize_continuous=True
+            discretize_continuous=False
         )
 
         sample_size = min(10, len(X_scaled))
