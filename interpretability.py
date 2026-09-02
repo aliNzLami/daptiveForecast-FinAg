@@ -3,7 +3,7 @@ import os
 
 def main():
     # Load data
-    transitions = pd.read_csv("transition_points.csv")
+    transitions = pd.read_csv("dataset/transition_points.csv")
     windows = pd.read_csv("dataset/window_features.csv")
     
     transitions["transition_date"] = pd.to_datetime(transitions["transition_date"])
