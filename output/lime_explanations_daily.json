@@ -1,0 +1,192 @@
+[
+  {
+    "sample_index": 1162,
+    "true_regime": "Bearish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "0.28 < Max_Temp_C <= 0.80",
+        -0.10178061283922264
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.025090208842113916
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        0.003055030134298666
+      ]
+    ]
+  },
+  {
+    "sample_index": 539,
+    "true_regime": "Bearish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "0.28 < Max_Temp_C <= 0.80",
+        -0.09710796765980707
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.011346161521440804
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        0.0012756858213902524
+      ]
+    ]
+  },
+  {
+    "sample_index": 745,
+    "true_regime": "Neutral",
+    "predicted_regime": "Neutral",
+    "explanations": [
+      [
+        "Max_Temp_C > 0.80",
+        -0.1302292354786542
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.031186054910189012
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        -0.00032813834622293325
+      ]
+    ]
+  },
+  {
+    "sample_index": 2274,
+    "true_regime": "Bearish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "-0.65 < Max_Temp_C <= 0.28",
+        0.08935999444676895
+      ],
+      [
+        "-0.70 < Min_Temp_C <= 0.27",
+        -0.06621229607674821
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.012401815608125215
+      ]
+    ]
+  },
+  {
+    "sample_index": 1793,
+    "true_regime": "Bullish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "Max_Temp_C > 0.80",
+        -0.1312132130358353
+      ],
+      [
+        "-0.44 < Precipitation_mm <= -0.43",
+        -0.004931217617103392
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        -0.0010061505576637406
+      ]
+    ]
+  },
+  {
+    "sample_index": 117,
+    "true_regime": "Bullish",
+    "predicted_regime": "Bullish",
+    "explanations": [
+      [
+        "-0.65 < Max_Temp_C <= 0.28",
+        0.09146693011677426
+      ],
+      [
+        "0.27 < Min_Temp_C <= 0.81",
+        -0.019418161858129772
+      ],
+      [
+        "Precipitation_mm <= -0.44",
+        0.008455907506307602
+      ]
+    ]
+  },
+  {
+    "sample_index": 2122,
+    "true_regime": "Neutral",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "Max_Temp_C <= -0.65",
+        0.134123653735953
+      ],
+      [
+        "Min_Temp_C <= -0.70",
+        0.06887332227203762
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.024797381602109213
+      ]
+    ]
+  },
+  {
+    "sample_index": 378,
+    "true_regime": "Bullish",
+    "predicted_regime": "Bullish",
+    "explanations": [
+      [
+        "-0.65 < Max_Temp_C <= 0.28",
+        0.09296083239525717
+      ],
+      [
+        "-0.70 < Min_Temp_C <= 0.27",
+        -0.07290759558354862
+      ],
+      [
+        "Precipitation_mm <= -0.44",
+        -0.0033107726832626444
+      ]
+    ]
+  },
+  {
+    "sample_index": 1929,
+    "true_regime": "Bearish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "Max_Temp_C > 0.80",
+        -0.13584320719847223
+      ],
+      [
+        "Precipitation_mm > -0.15",
+        -0.020855795942554777
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        -0.003949878166619866
+      ]
+    ]
+  },
+  {
+    "sample_index": 2015,
+    "true_regime": "Bearish",
+    "predicted_regime": "Bearish",
+    "explanations": [
+      [
+        "Max_Temp_C > 0.80",
+        -0.12663536340450546
+      ],
+      [
+        "-0.43 < Precipitation_mm <= -0.15",
+        0.008633158776104561
+      ],
+      [
+        "Min_Temp_C > 0.81",
+        0.0028432542307700146
+      ]
+    ]
+  }
+]

@@ -1,0 +1,88 @@
+{
+  "total_transitions": 33,
+  "unique_windows_analyzed": 54,
+  "total_days_analyzed": 2610,
+  "class_distribution": {
+    "Bearish": "990",
+    "Bullish": "900",
+    "Neutral": "720"
+  },
+  "random_forest_accuracy": 0.7471264367816092,
+  "knn_accuracy": 0.5655172413793104,
+  "shap_feature_importance": [
+    {
+      "feature": "Max_Temp_C",
+      "shap_importance": 0
+    },
+    {
+      "feature": "Min_Temp_C",
+      "shap_importance": 0
+    },
+    {
+      "feature": "Precipitation_mm",
+      "shap_importance": 0
+    }
+  ],
+  "lime_feature_importance": [
+    {
+      "feature": "Max_Temp_C <= -0.65",
+      "lime_importance": 0.134123653735953,
+      "lime_percentage": -339.5548285612625
+    },
+    {
+      "feature": "-0.65 < Max_Temp_C <= 0.28",
+      "lime_importance": 0.09126258565293345,
+      "lime_percentage": -231.04538805993306
+    },
+    {
+      "feature": "Min_Temp_C <= -0.70",
+      "lime_importance": 0.06887332227203762,
+      "lime_percentage": -174.36349581235294
+    },
+    {
+      "feature": "-0.43 < Precipitation_mm <= -0.15",
+      "lime_importance": 0.008633158776104561,
+      "lime_percentage": -21.856180222568362
+    },
+    {
+      "feature": "Precipitation_mm <= -0.44",
+      "lime_importance": 0.002572567411522479,
+      "lime_percentage": -6.512853341301793
+    },
+    {
+      "feature": "Min_Temp_C > 0.81",
+      "lime_importance": 0.0003149671859920655,
+      "lime_percentage": -0.7973882746477148
+    },
+    {
+      "feature": "-0.44 < Precipitation_mm <= -0.43",
+      "lime_importance": -0.004931217617103392,
+      "lime_percentage": 12.484142102706357
+    },
+    {
+      "feature": "0.27 < Min_Temp_C <= 0.81",
+      "lime_importance": -0.019418161858129772,
+      "lime_percentage": 49.16008800127587
+    },
+    {
+      "feature": "Precipitation_mm > -0.15",
+      "lime_importance": -0.020946236404422156,
+      "lime_percentage": 53.02864568027125
+    },
+    {
+      "feature": "-0.70 < Min_Temp_C <= 0.27",
+      "lime_importance": -0.0695599458301484,
+      "lime_percentage": 176.1017898273626
+    },
+    {
+      "feature": "0.28 < Max_Temp_C <= 0.80",
+      "lime_importance": -0.09944429024951486,
+      "lime_percentage": 251.75864201810788
+    },
+    {
+      "feature": "Max_Temp_C > 0.80",
+      "lime_importance": -0.13098025477936678,
+      "lime_percentage": 331.5968266423424
+    }
+  ]
+}
