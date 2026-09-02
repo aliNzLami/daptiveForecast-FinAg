@@ -1,0 +1,26 @@
+[
+  {
+    "transition_date": "2015-06-29 00:00:00",
+    "from_model": "KNeighborsTimeSeries",
+    "to_model": "Random Forest",
+    "window_count": 2,
+    "from_model_error": "Expected n_neighbors <= n_samples_fit, but n_neighbors = 5, n_samples_fit = 2, n_samples = 2",
+    "to_model_error": "'RandomForestRegressor' object has no attribute 'predict_proba'"
+  },
+  {
+    "transition_date": "2015-08-11 00:00:00",
+    "from_model": "Random Forest",
+    "to_model": "KNeighborsTimeSeries",
+    "window_count": 2,
+    "from_model_error": "'RandomForestRegressor' object has no attribute 'predict_proba'",
+    "to_model_error": "Expected n_neighbors <= n_samples_fit, but n_neighbors = 5, n_samples_fit = 2, n_samples = 2"
+  },
+  {
+    "transition_date": "2021-08-02 00:00:00",
+    "from_model": "Random Forest",
+    "to_model": "KNeighborsTimeSeries",
+    "window_count": 2,
+    "from_model_error": "'RandomForestRegressor' object has no attribute 'predict_proba'",
+    "to_model_error": "Expected n_neighbors <= n_samples_fit, but n_neighbors = 5, n_samples_fit = 2, n_samples = 2"
+  }
+]
