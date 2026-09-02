@@ -3,7 +3,7 @@ import os
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(base_dir, "..", "top_models_performance.csv")
+    input_path = os.path.join(base_dir, "..", "dataset", "top_models_performance.csv")
     output_path = os.path.join(base_dir, "..", "dataset", "final_model_per_window.csv")
 
     if not os.path.exists(input_path):
