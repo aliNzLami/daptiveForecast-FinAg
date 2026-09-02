@@ -1,4 +1,4 @@
-name: Transition Analysis - SHAP & LIME
+name: Select Transition Windows
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  analyze-transitions:
+  select-windows:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,20 +23,20 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas numpy scikit-learn shap lime matplotlib
+          pip install pandas numpy
 
-      - name: Run transition analysis script
+      - name: Run selection script
         run: python interpretability.py
 
       - name: Commit and push results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -d "output" ]; then
-            git add output/
-            git commit -m "Add SHAP/LIME transition analysis results [skip ci]" || echo "No changes to commit"
+          if [ -f "selected_windows_for_transitions.csv" ]; then
+            git add selected_windows_for_transitions.csv
+            git commit -m "Add selected windows around transition points [skip ci]" || echo "No changes to commit"
             git push
           else
-            echo "Output directory not found. Skipping commit."
+            echo "File selected_windows_for_transitions.csv not found. Skipping commit."
             exit 1
           fi
