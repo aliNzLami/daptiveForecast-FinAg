@@ -3,10 +3,9 @@ import numpy as np
 import os
 import json
 import warnings
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import shap
 import lime
 import lime.lime_tabular
@@ -68,15 +67,16 @@ def compute_regime_labels(df_windows, df_main):
     df_windows["regime"] = df_windows["future_return"].apply(classify_regime)
     return df_windows
 
-def get_model_instance(model_name):
+def get_model_instance(model_name, n_samples):
     if model_name == "Random Forest":
-        return RandomForestRegressor(n_estimators=100, random_state=42)
+        return RandomForestClassifier(n_estimators=100, random_state=42)
     elif model_name == "KNeighborsTimeSeries":
-        return KNeighborsRegressor(n_neighbors=5)
+        k = min(5, max(1, n_samples - 1))
+        return KNeighborsClassifier(n_neighbors=k)
     else:
         return None
 
-def extract_window_features(df_windows, transition_date, window_days=30):
+def extract_window_features(df_windows, transition_date, window_days=90):
     before = transition_date - pd.Timedelta(days=window_days)
     after = transition_date + pd.Timedelta(days=window_days)
     window_rows = df_windows[
@@ -85,8 +85,12 @@ def extract_window_features(df_windows, transition_date, window_days=30):
     ]
     return window_rows
 
-def compute_shap_and_lime(model, X_train, y_train, X_test, feature_names, class_names, model_name):
+def compute_shap_and_lime(model, X_train, y_train, X_test, feature_names):
     results = {}
+
+    if len(X_train) < 5:
+        results["error"] = f"Not enough samples: {len(X_train)}"
+        return results
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -96,45 +100,49 @@ def compute_shap_and_lime(model, X_train, y_train, X_test, feature_names, class_
     y_train_enc = le.fit_transform(y_train)
     model.fit(X_train_scaled, y_train_enc)
 
-    y_pred_enc = model.predict(X_test_scaled)
-    y_pred = le.inverse_transform(y_pred_enc.astype(int))
+    try:
+        explainer_shap = shap.TreeExplainer(model)
+        shap_values = explainer_shap.shap_values(X_test_scaled)
+        if isinstance(shap_values, list):
+            shap_values = np.array(shap_values)
+        shap_importance = np.abs(shap_values).mean(axis=0)
+        if len(shap_importance.shape) > 1:
+            shap_importance = shap_importance.mean(axis=0)
+        results["shap_importance"] = dict(zip(feature_names, shap_importance))
+    except Exception as e:
+        results["shap_error"] = str(e)
 
-    explainer_shap = shap.TreeExplainer(model)
-    shap_values = explainer_shap.shap_values(X_test_scaled)
-
-    shap_importance = np.abs(shap_values).mean(axis=0)
-    results["shap_importance"] = dict(zip(feature_names, shap_importance))
-
-    explainer_lime = lime.lime_tabular.LimeTabularExplainer(
-        X_train_scaled,
-        feature_names=feature_names,
-        class_names=le.classes_,
-        mode='classification',
-        verbose=False
-    )
-
-    lime_explanations = []
-    for i in range(min(5, len(X_test_scaled))):
-        exp = explainer_lime.explain_instance(
-            X_test_scaled[i],
-            model.predict_proba,
-            num_features=5
+    try:
+        explainer_lime = lime.lime_tabular.LimeTabularExplainer(
+            X_train_scaled,
+            feature_names=feature_names,
+            class_names=le.classes_,
+            mode='classification',
+            verbose=False
         )
-        lime_explanations.append(exp.as_list())
 
-    results["lime_explanations"] = lime_explanations
+        lime_explanations = []
+        for i in range(min(3, len(X_test_scaled))):
+            exp = explainer_lime.explain_instance(
+                X_test_scaled[i],
+                model.predict_proba,
+                num_features=5
+            )
+            lime_explanations.append(exp.as_list())
 
-    lime_importance = {}
-    for exp_list in lime_explanations:
-        for feature, weight in exp_list:
-            if feature not in lime_importance:
-                lime_importance[feature] = []
-            lime_importance[feature].append(weight)
+        lime_importance = {}
+        for exp_list in lime_explanations:
+            for feature, weight in exp_list:
+                if feature not in lime_importance:
+                    lime_importance[feature] = []
+                lime_importance[feature].append(weight)
 
-    for feature in lime_importance:
-        lime_importance[feature] = np.mean(lime_importance[feature])
+        for feature in lime_importance:
+            lime_importance[feature] = np.mean(lime_importance[feature])
 
-    results["lime_importance"] = lime_importance
+        results["lime_importance"] = lime_importance
+    except Exception as e:
+        results["lime_error"] = str(e)
 
     return results
 
@@ -158,7 +166,7 @@ def main():
         from_model = trans_row["from_model"]
         to_model = trans_row["to_model"]
 
-        window_rows = extract_window_features(df_windows, trans_date)
+        window_rows = extract_window_features(df_windows, trans_date, window_days=90)
 
         if window_rows.empty:
             continue
@@ -169,8 +177,8 @@ def main():
         if len(np.unique(y_regime)) < 2:
             continue
 
-        from_model_instance = get_model_instance(from_model)
-        to_model_instance = get_model_instance(to_model)
+        from_model_instance = get_model_instance(from_model, len(X))
+        to_model_instance = get_model_instance(to_model, len(X))
 
         if from_model_instance is None or to_model_instance is None:
             continue
@@ -182,29 +190,27 @@ def main():
             "window_count": len(window_rows)
         }
 
-        print(f"Processing transition at {trans_date} ({from_model} -> {to_model})")
+        print(f"Processing transition at {trans_date} ({from_model} -> {to_model}) with {len(window_rows)} windows")
 
-        try:
-            from_results = compute_shap_and_lime(
-                from_model_instance, X, y_regime, X,
-                feature_cols, np.unique(y_regime), from_model
-            )
-            results_entry["from_model_shap"] = from_results["shap_importance"]
-            results_entry["from_model_lime"] = from_results["lime_importance"]
-        except Exception as e:
-            results_entry["from_model_error"] = str(e)
-            print(f"  Failed for {from_model}: {e}")
+        from_results = compute_shap_and_lime(
+            from_model_instance, X, y_regime, X, feature_cols
+        )
+        results_entry["from_model"] = {
+            "shap": from_results.get("shap_importance", {}),
+            "lime": from_results.get("lime_importance", {})
+        }
+        if "error" in from_results:
+            results_entry["from_model"]["error"] = from_results["error"]
 
-        try:
-            to_results = compute_shap_and_lime(
-                to_model_instance, X, y_regime, X,
-                feature_cols, np.unique(y_regime), to_model
-            )
-            results_entry["to_model_shap"] = to_results["shap_importance"]
-            results_entry["to_model_lime"] = to_results["lime_importance"]
-        except Exception as e:
-            results_entry["to_model_error"] = str(e)
-            print(f"  Failed for {to_model}: {e}")
+        to_results = compute_shap_and_lime(
+            to_model_instance, X, y_regime, X, feature_cols
+        )
+        results_entry["to_model"] = {
+            "shap": to_results.get("shap_importance", {}),
+            "lime": to_results.get("lime_importance", {})
+        }
+        if "error" in to_results:
+            results_entry["to_model"]["error"] = to_results["error"]
 
         all_results.append(results_entry)
 
@@ -215,27 +221,25 @@ def main():
     with open(output_path, "w") as f:
         json.dump(all_results, f, indent=2, default=str)
 
-    print(f"Analysis complete. Results saved to {output_path}")
+    print(f"\nAnalysis complete. Results saved to {output_path}")
     print(f"Total transitions processed: {len(all_results)}")
 
     summary_rows = []
     for res in all_results:
-        if "from_model_shap" in res and "to_model_shap" in res:
-            if "error" not in str(res.get("from_model_shap", {})) and "error" not in str(res.get("to_model_shap", {})):
-                from_imp = res["from_model_shap"]
-                to_imp = res["to_model_shap"]
-                if isinstance(from_imp, dict) and isinstance(to_imp, dict):
-                    common_features = set(from_imp.keys()) & set(to_imp.keys())
-                    for feat in common_features:
-                        summary_rows.append({
-                            "transition_date": res["transition_date"],
-                            "from_model": res["from_model"],
-                            "to_model": res["to_model"],
-                            "feature": feat,
-                            "from_model_importance": from_imp.get(feat, 0),
-                            "to_model_importance": to_imp.get(feat, 0),
-                            "agreement": "high" if abs(from_imp.get(feat, 0) - to_imp.get(feat, 0)) < 0.1 else "low"
-                        })
+        from_shap = res.get("from_model", {}).get("shap", {})
+        to_shap = res.get("to_model", {}).get("shap", {})
+        if from_shap and to_shap and "error" not in str(from_shap) and "error" not in str(to_shap):
+            common_features = set(from_shap.keys()) & set(to_shap.keys())
+            for feat in common_features:
+                summary_rows.append({
+                    "transition_date": res["transition_date"],
+                    "from_model": res["from_model"],
+                    "to_model": res["to_model"],
+                    "feature": feat,
+                    "from_model_importance": from_shap.get(feat, 0),
+                    "to_model_importance": to_shap.get(feat, 0),
+                    "agreement": "high" if abs(from_shap.get(feat, 0) - to_shap.get(feat, 0)) < 0.1 else "low"
+                })
 
     if summary_rows:
         summary_path = os.path.join(output_dir, "feature_agreement_analysis.csv")
