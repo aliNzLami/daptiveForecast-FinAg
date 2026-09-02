@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 
 def load_data():
     base_dir = os.getcwd()
-    transitions_path = os.path.join(base_dir, "transition_points.csv")
+    transitions_path = os.path.join(base_dir, "dataset", "transition_points.csv")
     windows_path = os.path.join(base_dir, "dataset", "window_features.csv")
     main_path = os.path.join(base_dir, "dataset", "US_Agriculture_Weather_2010_2024.csv")
 
