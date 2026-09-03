@@ -6,10 +6,7 @@ import warnings
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
-import shap
-import lime
-import lime.lime_tabular
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score, precision_score, recall_score
 
 warnings.filterwarnings('ignore')
 
@@ -116,9 +113,80 @@ def prepare_features(df_days):
     y = df_days["regime"].values
     return X, y, feature_cols
 
+def calculate_classification_metrics(y_true, y_pred, model_name, class_labels):
+    accuracy = accuracy_score(y_true, y_pred)
+    f1_macro = f1_score(y_true, y_pred, average='macro')
+    f1_weighted = f1_score(y_true, y_pred, average='weighted')
+    precision_macro = precision_score(y_true, y_pred, average='macro')
+    recall_macro = recall_score(y_true, y_pred, average='macro')
+
+    report = classification_report(y_true, y_pred, target_names=class_labels, output_dict=True)
+    cm = confusion_matrix(y_true, y_pred)
+
+    return {
+        "model": model_name,
+        "accuracy": accuracy,
+        "f1_macro": f1_macro,
+        "f1_weighted": f1_weighted,
+        "precision_macro": precision_macro,
+        "recall_macro": recall_macro,
+        "classification_report": report,
+        "confusion_matrix": cm,
+        "class_labels": class_labels
+    }
+
+def transition_detection_accuracy(df, model_name, pred_col):
+    true_labels = df["regime"]
+    pred_labels = df[pred_col]
+    df["regime_shift"] = true_labels != true_labels.shift(1)
+
+    transition_days = df[df["regime_shift"]]
+    if len(transition_days) == 0:
+        return None
+
+    correct = (transition_days["regime"] == transition_days[pred_col]).sum()
+    total = len(transition_days)
+    return correct / total if total > 0 else 0
+
+def weather_based_accuracy(df, model_name, pred_col):
+    bins = [-float('inf'), 0, 15, 25, float('inf')]
+    labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
+    df["temp_group"] = pd.cut(df["Max_Temp_C"], bins=bins, labels=labels)
+
+    weather_acc = {}
+    for group in df["temp_group"].unique():
+        if pd.isna(group):
+            continue
+        subset = df[df["temp_group"] == group]
+        correct = (subset["regime"] == subset[pred_col]).sum()
+        total = len(subset)
+        weather_acc[group] = correct / total if total > 0 else 0
+
+    return weather_acc
+
+def regime_stability_index(df, model_name, pred_col):
+    true_labels = df["regime"]
+    pred_labels = df[pred_col]
+
+    df["regime_block"] = (true_labels != true_labels.shift(1)).cumsum()
+    block_accuracies = []
+
+    for block_id in df["regime_block"].unique():
+        block_data = df[df["regime_block"] == block_id]
+        if len(block_data) == 0:
+            continue
+        correct = (block_data["regime"] == block_data[pred_col]).sum()
+        total = len(block_data)
+        block_accuracies.append(correct / total if total > 0 else 0)
+
+    if not block_accuracies:
+        return 0
+
+    return np.mean(block_accuracies)
+
 def main():
     print("=" * 70)
-    print("TRANSITION POINT ANALYSIS - DAILY DATA APPROACH")
+    print("TRANSITION WINDOWS ANALYSIS - DAILY DATA APPROACH")
     print("=" * 70)
 
     print("\n[1] Loading data...")
@@ -162,8 +230,6 @@ def main():
     y_pred_rf = rf_model.predict(X_scaled)
     acc_rf = accuracy_score(y_enc, y_pred_rf)
     print(f"    Accuracy: {acc_rf:.4f}")
-    print("\n    Classification Report:")
-    print(classification_report(y_enc, y_pred_rf, target_names=le.classes_))
 
     print("\n[6] Training KNN classifier...")
     k = min(5, max(1, len(X_scaled) - 1))
@@ -172,158 +238,170 @@ def main():
     y_pred_knn = knn_model.predict(X_scaled)
     acc_knn = accuracy_score(y_enc, y_pred_knn)
     print(f"    Accuracy: {acc_knn:.4f}")
-    print("\n    Classification Report:")
-    print(classification_report(y_enc, y_pred_knn, target_names=le.classes_))
 
-    print("\n[7] Computing SHAP values...")
-    try:
-        explainer_shap = shap.TreeExplainer(rf_model)
-        shap_values = explainer_shap.shap_values(X_scaled)
+    print("\n[7] Calculating classification metrics...")
+    results = {}
 
-        if isinstance(shap_values, list):
-            shap_importance_per_class = [np.abs(sv).mean(axis=0) for sv in shap_values]
-            shap_importance_mean = np.mean(shap_importance_per_class, axis=0)
-        else:
-            shap_importance_mean = np.abs(shap_values).mean(axis=0)
+    # RF metrics
+    rf_metrics = calculate_classification_metrics(
+        y_enc, y_pred_rf, "rf", le.classes_
+    )
+    results["rf"] = rf_metrics
 
-        if shap_importance_mean.shape[0] != len(feature_cols):
-            raise ValueError(f"SHAP importance shape mismatch: {shap_importance_mean.shape[0]} vs {len(feature_cols)}")
+    # KNN metrics
+    knn_metrics = calculate_classification_metrics(
+        y_enc, y_pred_knn, "knn", le.classes_
+    )
+    results["knn"] = knn_metrics
 
-        shap_df = pd.DataFrame({
-            "feature": feature_cols,
-            "shap_importance": shap_importance_mean
-        }).sort_values("shap_importance", ascending=False)
+    # Print RF report
+    print(f"\n    Random Forest Classification Report:")
+    print(f"      Accuracy: {rf_metrics['accuracy']:.4f}")
+    print(f"      F1-Macro: {rf_metrics['f1_macro']:.4f}")
+    print(f"      F1-Weighted: {rf_metrics['f1_weighted']:.4f}")
+    print(f"      Precision-Macro: {rf_metrics['precision_macro']:.4f}")
+    print(f"      Recall-Macro: {rf_metrics['recall_macro']:.4f}")
 
-        shap_df["shap_percentage"] = (shap_df["shap_importance"] / shap_df["shap_importance"].sum()) * 100
+    print(f"\n    KNN Classification Report:")
+    print(f"      Accuracy: {knn_metrics['accuracy']:.4f}")
+    print(f"      F1-Macro: {knn_metrics['f1_macro']:.4f}")
+    print(f"      F1-Weighted: {knn_metrics['f1_weighted']:.4f}")
+    print(f"      Precision-Macro: {knn_metrics['precision_macro']:.4f}")
+    print(f"      Recall-Macro: {knn_metrics['recall_macro']:.4f}")
 
-        print("\n    SHAP Feature Importance:")
-        print(shap_df.to_string(index=False))
+    # Add predictions to dataframe for further analysis
+    df_days["predicted_regime_rf"] = le.inverse_transform(y_pred_rf)
+    df_days["predicted_regime_knn"] = le.inverse_transform(y_pred_knn)
+    df_days["rf_correct"] = df_days["regime"] == df_days["predicted_regime_rf"]
+    df_days["knn_correct"] = df_days["regime"] == df_days["predicted_regime_knn"]
 
-    except Exception as e:
-        print(f"    SHAP failed: {e}")
-        shap_df = pd.DataFrame({"feature": feature_cols, "shap_importance": [0]*len(feature_cols)})
+    # Transition detection accuracy
+    print("\n[8] Transition detection accuracy...")
+    for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
+        acc = transition_detection_accuracy(df_days, model, pred_col)
+        if acc is not None:
+            print(f"    {model.upper()} on transition days: {acc:.4f}")
+            results[model]["transition_accuracy"] = acc
 
-    print("\n[8] Computing LIME explanations...")
-    try:
-        lime_explainer = lime.lime_tabular.LimeTabularExplainer(
-            X_scaled,
-            feature_names=feature_cols,
-            class_names=le.classes_,
-            mode='classification',
-            verbose=False,
-            discretize_continuous=False
-        )
+    # Weather-based accuracy
+    print("\n[9] Weather-based accuracy analysis...")
+    for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
+        weather_acc = weather_based_accuracy(df_days, model, pred_col)
+        if weather_acc:
+            print(f"\n    {model.upper()} accuracy by temperature group:")
+            for group, acc in weather_acc.items():
+                print(f"      {group}: {acc:.4f}")
+            results[model]["weather_accuracy"] = weather_acc
 
-        sample_size = min(10, len(X_scaled))
-        sample_indices = np.random.choice(len(X_scaled), sample_size, replace=False)
+    # Regime stability index
+    print("\n[10] Regime stability index...")
+    for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
+        stability = regime_stability_index(df_days, model, pred_col)
+        if stability is not None:
+            print(f"    {model.upper()} stability index: {stability:.4f}")
+            results[model]["stability_index"] = stability
 
-        lime_importance = {}
-        lime_results = []
+    print("\n[11] Saving outputs...")
 
-        for idx in sample_indices:
-            exp = lime_explainer.explain_instance(
-                X_scaled[idx],
-                rf_model.predict_proba,
-                num_features=len(feature_cols)
-            )
-            exp_dict = exp.as_list()
-            lime_results.append({
-                "sample_index": int(idx),
-                "true_regime": le.inverse_transform([y_enc[idx]])[0],
-                "predicted_regime": le.inverse_transform([rf_model.predict([X_scaled[idx]])[0]])[0],
-                "explanations": exp_dict
-            })
-
-            for feature, weight in exp_dict:
-                if feature not in lime_importance:
-                    lime_importance[feature] = []
-                lime_importance[feature].append(weight)
-
-        for feature in lime_importance:
-            lime_importance[feature] = np.mean(lime_importance[feature])
-
-        lime_df = pd.DataFrame({
-            "feature": list(lime_importance.keys()),
-            "lime_importance": list(lime_importance.values())
-        }).sort_values("lime_importance", ascending=False)
-
-        lime_df["lime_percentage"] = (lime_df["lime_importance"] / lime_df["lime_importance"].sum()) * 100
-
-        print("\n    LIME Feature Importance:")
-        print(lime_df.to_string(index=False))
-
-    except Exception as e:
-        print(f"    LIME failed: {e}")
-        lime_df = pd.DataFrame({"feature": feature_cols, "lime_importance": [0]*len(feature_cols)})
-        lime_results = []
-
-    print("\n[9] Saving outputs...")
     output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(output_dir, exist_ok=True)
 
-    shap_output = os.path.join(output_dir, "shap_importance_daily_transitions.csv")
-    shap_df.to_csv(shap_output, index=False)
-    print(f"    SHAP importance: {shap_output}")
-
-    lime_output = os.path.join(output_dir, "lime_importance_daily_transitions.csv")
-    lime_df.to_csv(lime_output, index=False)
-    print(f"    LIME importance: {lime_output}")
-
-    combined_df = pd.merge(shap_df, lime_df, on="feature", how="outer").fillna(0)
-    if "shap_importance" in combined_df.columns and "lime_importance" in combined_df.columns:
-        combined_df["shap_rank"] = combined_df["shap_importance"].rank(ascending=False)
-        combined_df["lime_rank"] = combined_df["lime_importance"].rank(ascending=False)
-        combined_df["avg_rank"] = (combined_df["shap_rank"] + combined_df["lime_rank"]) / 2
-        combined_df = combined_df.sort_values("avg_rank")
-
-        combined_output = os.path.join(output_dir, "feature_importance_combined_daily.csv")
-        combined_df.to_csv(combined_output, index=False)
-        print(f"    Combined importance: {combined_output}")
-
-    if lime_results:
-        lime_json_output = os.path.join(output_dir, "lime_explanations_daily.json")
-        with open(lime_json_output, "w") as f:
-            json.dump(lime_results, f, indent=2, default=str)
-        print(f"    LIME explanations: {lime_json_output}")
-
-    df_output = df_days.copy()
-    df_output["predicted_regime_rf"] = le.inverse_transform(y_pred_rf)
-    df_output["predicted_regime_knn"] = le.inverse_transform(y_pred_knn)
-    df_output["rf_correct"] = df_output["regime"] == df_output["predicted_regime_rf"]
-    df_output["knn_correct"] = df_output["regime"] == df_output["predicted_regime_knn"]
+    # 1. Daily predictions with all analysis columns
+    bins = [-float('inf'), 0, 15, 25, float('inf')]
+    labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
+    df_days["temp_group"] = pd.cut(df_days["Max_Temp_C"], bins=bins, labels=labels)
+    df_days["regime_shift"] = df_days["regime"] != df_days["regime"].shift(1)
 
     full_output = os.path.join(output_dir, "daily_data_with_predictions.csv")
-    df_output.to_csv(full_output, index=False)
-    print(f"    Full predictions: {full_output}")
+    df_days.to_csv(full_output, index=False)
+    print(f"    Full dataset with predictions: {full_output}")
 
+    # 2. Classification metrics summary
+    summary_rows = []
+    for model, metrics in results.items():
+        summary_rows.append({
+            "model": model.upper(),
+            "accuracy": metrics["accuracy"],
+            "f1_macro": metrics["f1_macro"],
+            "f1_weighted": metrics["f1_weighted"],
+            "precision_macro": metrics["precision_macro"],
+            "recall_macro": metrics["recall_macro"],
+            "transition_accuracy": metrics.get("transition_accuracy", None),
+            "stability_index": metrics.get("stability_index", None)
+        })
+    summary_df = pd.DataFrame(summary_rows)
+    summary_output = os.path.join(output_dir, "classification_summary.csv")
+    summary_df.to_csv(summary_output, index=False)
+    print(f"    Classification summary: {summary_output}")
+
+    # 3. Per-class detailed reports
+    class_reports = []
+    for model, metrics in results.items():
+        report = metrics["classification_report"]
+        for class_name, class_metrics in report.items():
+            if class_name in ["accuracy", "macro avg", "weighted avg"]:
+                continue
+            class_reports.append({
+                "model": model.upper(),
+                "class": class_name,
+                "precision": class_metrics["precision"],
+                "recall": class_metrics["recall"],
+                "f1-score": class_metrics["f1-score"],
+                "support": class_metrics["support"]
+            })
+    class_report_df = pd.DataFrame(class_reports)
+    class_report_output = os.path.join(output_dir, "per_class_metrics.csv")
+    class_report_df.to_csv(class_report_output, index=False)
+    print(f"    Per-class metrics: {class_report_output}")
+
+    # 4. Confusion matrices
+    for model, metrics in results.items():
+        cm = metrics["confusion_matrix"]
+        labels_cm = metrics["class_labels"]
+        cm_df = pd.DataFrame(cm, index=labels_cm, columns=labels_cm)
+        cm_output = os.path.join(output_dir, f"confusion_matrix_{model}.csv")
+        cm_df.to_csv(cm_output)
+        print(f"    Confusion matrix ({model.upper()}): {cm_output}")
+
+    # 5. Weather-based accuracy
+    weather_rows = []
+    for model, metrics in results.items():
+        if "weather_accuracy" in metrics:
+            for temp_group, acc in metrics["weather_accuracy"].items():
+                weather_rows.append({
+                    "model": model.upper(),
+                    "temperature_group": temp_group,
+                    "accuracy": acc
+                })
+    if weather_rows:
+        weather_df = pd.DataFrame(weather_rows)
+        weather_output = os.path.join(output_dir, "weather_based_accuracy.csv")
+        weather_df.to_csv(weather_output, index=False)
+        print(f"    Weather-based accuracy: {weather_output}")
+
+    # 6. Final JSON report
     report = {
         "total_transitions": len(df_transitions),
         "unique_windows_analyzed": len(df_unique_windows),
         "total_days_analyzed": len(df_days),
-        "class_distribution": dict(class_dist),
-        "random_forest_accuracy": float(acc_rf),
-        "knn_accuracy": float(acc_knn),
-        "shap_feature_importance": shap_df.to_dict(orient="records"),
-        "lime_feature_importance": lime_df.to_dict(orient="records")
+        "class_distribution": class_dist.to_dict(),
+        "models": results
     }
-
-    report_path = os.path.join(output_dir, "analysis_report_daily.json")
+    report_path = os.path.join(output_dir, "final_analysis_report.json")
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
-    print(f"    Report: {report_path}")
+    print(f"    Analysis report: {report_path}")
 
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
-    print(f"Total transitions: {len(df_transitions)}")
-    print(f"Unique windows: {len(df_unique_windows)}")
-    print(f"Daily samples: {len(df_days)}")
-    print(f"Random Forest accuracy: {acc_rf:.4f}")
-    print(f"KNN accuracy: {acc_knn:.4f}")
-    print("\nTop 5 features (SHAP):")
-    print(shap_df.head(5).to_string(index=False))
-    print("\nTop 5 features (LIME):")
-    print(lime_df.head(5).to_string(index=False))
+    for model, metrics in results.items():
+        print(f"\n{model.upper()} Model:")
+        print(f"  Accuracy: {metrics['accuracy']:.4f}")
+        print(f"  F1-Macro: {metrics['f1_macro']:.4f}")
+        print(f"  Transition Accuracy: {metrics.get('transition_accuracy', 0):.4f}")
+        print(f"  Stability Index: {metrics.get('stability_index', 0):.4f}")
+
     print("\nDone.")
 
 if __name__ == "__main__":
