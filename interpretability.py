@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 def load_data():
     base_dir = os.getcwd()
-    transitions_path = os.path.join(base_dir, "dataset", "transition_points.csv")
+    transitions_path = os.path.join(base_dir, "transition_points.csv")
     windows_path = os.path.join(base_dir, "dataset", "window_features.csv")
     main_path = os.path.join(base_dir, "dataset", "US_Agriculture_Weather_2010_2024.csv")
 
@@ -149,20 +149,35 @@ def transition_detection_accuracy(df, model_name, pred_col):
     return correct / total if total > 0 else 0
 
 def weather_based_accuracy(df, model_name, pred_col):
-    bins = [-float('inf'), 0, 15, 25, float('inf')]
-    labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
-    df["temp_group"] = pd.cut(df["Max_Temp_C"], bins=bins, labels=labels)
+    # Temperature groups
+    temp_bins = [-float('inf'), 0, 15, 25, float('inf')]
+    temp_labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
+    df["temp_group"] = pd.cut(df["Max_Temp_C"], bins=temp_bins, labels=temp_labels)
 
-    weather_acc = {}
+    temp_acc = {}
     for group in df["temp_group"].unique():
         if pd.isna(group):
             continue
         subset = df[df["temp_group"] == group]
         correct = (subset["regime"] == subset[pred_col]).sum()
         total = len(subset)
-        weather_acc[group] = correct / total if total > 0 else 0
+        temp_acc[group] = correct / total if total > 0 else 0
 
-    return weather_acc
+    # Precipitation groups
+    df["rain_group"] = df["Precipitation_mm"].apply(lambda x: "Rainy" if x > 0 else "Dry")
+    rain_acc = {}
+    for group in df["rain_group"].unique():
+        if pd.isna(group):
+            continue
+        subset = df[df["rain_group"] == group]
+        correct = (subset["regime"] == subset[pred_col]).sum()
+        total = len(subset)
+        rain_acc[group] = correct / total if total > 0 else 0
+
+    return {
+        "temperature": temp_acc,
+        "precipitation": rain_acc
+    }
 
 def regime_stability_index(df, model_name, pred_col):
     true_labels = df["regime"]
@@ -269,6 +284,18 @@ def main():
     print(f"      Precision-Macro: {knn_metrics['precision_macro']:.4f}")
     print(f"      Recall-Macro: {knn_metrics['recall_macro']:.4f}")
 
+    # Feature importance from Random Forest
+    print("\n[8] Feature importance analysis...")
+    importances = rf_model.feature_importances_
+    feature_importance_df = pd.DataFrame({
+        "feature": feature_cols,
+        "importance": importances
+    }).sort_values("importance", ascending=False)
+
+    print("\n    Random Forest Feature Importance:")
+    for idx, row in feature_importance_df.iterrows():
+        print(f"      {row['feature']}: {row['importance']:.4f}")
+
     # Add predictions to dataframe for further analysis
     df_days["predicted_regime_rf"] = le.inverse_transform(y_pred_rf)
     df_days["predicted_regime_knn"] = le.inverse_transform(y_pred_knn)
@@ -276,47 +303,56 @@ def main():
     df_days["knn_correct"] = df_days["regime"] == df_days["predicted_regime_knn"]
 
     # Transition detection accuracy
-    print("\n[8] Transition detection accuracy...")
+    print("\n[9] Transition detection accuracy...")
     for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
         acc = transition_detection_accuracy(df_days, model, pred_col)
         if acc is not None:
             print(f"    {model.upper()} on transition days: {acc:.4f}")
             results[model]["transition_accuracy"] = acc
 
-    # Weather-based accuracy
-    print("\n[9] Weather-based accuracy analysis...")
+    # Weather-based accuracy (temperature + precipitation)
+    print("\n[10] Weather-based accuracy analysis...")
     for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
         weather_acc = weather_based_accuracy(df_days, model, pred_col)
         if weather_acc:
             print(f"\n    {model.upper()} accuracy by temperature group:")
-            for group, acc in weather_acc.items():
+            for group, acc in weather_acc["temperature"].items():
+                print(f"      {group}: {acc:.4f}")
+            print(f"\n    {model.upper()} accuracy by precipitation group:")
+            for group, acc in weather_acc["precipitation"].items():
                 print(f"      {group}: {acc:.4f}")
             results[model]["weather_accuracy"] = weather_acc
 
     # Regime stability index
-    print("\n[10] Regime stability index...")
+    print("\n[11] Regime stability index...")
     for model, pred_col in [("rf", "predicted_regime_rf"), ("knn", "predicted_regime_knn")]:
         stability = regime_stability_index(df_days, model, pred_col)
         if stability is not None:
             print(f"    {model.upper()} stability index: {stability:.4f}")
             results[model]["stability_index"] = stability
 
-    print("\n[11] Saving outputs...")
+    print("\n[12] Saving outputs...")
 
     output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. Daily predictions with all analysis columns
-    bins = [-float('inf'), 0, 15, 25, float('inf')]
-    labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
-    df_days["temp_group"] = pd.cut(df_days["Max_Temp_C"], bins=bins, labels=labels)
+    temp_bins = [-float('inf'), 0, 15, 25, float('inf')]
+    temp_labels = ['<0°C', '0-15°C', '15-25°C', '>25°C']
+    df_days["temp_group"] = pd.cut(df_days["Max_Temp_C"], bins=temp_bins, labels=temp_labels)
+    df_days["rain_group"] = df_days["Precipitation_mm"].apply(lambda x: "Rainy" if x > 0 else "Dry")
     df_days["regime_shift"] = df_days["regime"] != df_days["regime"].shift(1)
 
     full_output = os.path.join(output_dir, "daily_data_with_predictions.csv")
     df_days.to_csv(full_output, index=False)
     print(f"    Full dataset with predictions: {full_output}")
 
-    # 2. Classification metrics summary
+    # 2. Feature importance
+    feature_output = os.path.join(output_dir, "feature_importance.csv")
+    feature_importance_df.to_csv(feature_output, index=False)
+    print(f"    Feature importance: {feature_output}")
+
+    # 3. Classification metrics summary
     summary_rows = []
     for model, metrics in results.items():
         summary_rows.append({
@@ -334,7 +370,7 @@ def main():
     summary_df.to_csv(summary_output, index=False)
     print(f"    Classification summary: {summary_output}")
 
-    # 3. Per-class detailed reports
+    # 4. Per-class detailed reports
     class_reports = []
     for model, metrics in results.items():
         report = metrics["classification_report"]
@@ -354,7 +390,7 @@ def main():
     class_report_df.to_csv(class_report_output, index=False)
     print(f"    Per-class metrics: {class_report_output}")
 
-    # 4. Confusion matrices
+    # 5. Confusion matrices
     for model, metrics in results.items():
         cm = metrics["confusion_matrix"]
         labels_cm = metrics["class_labels"]
@@ -363,14 +399,24 @@ def main():
         cm_df.to_csv(cm_output)
         print(f"    Confusion matrix ({model.upper()}): {cm_output}")
 
-    # 5. Weather-based accuracy
+    # 6. Weather-based accuracy (both temperature and precipitation)
     weather_rows = []
     for model, metrics in results.items():
         if "weather_accuracy" in metrics:
-            for temp_group, acc in metrics["weather_accuracy"].items():
+            # Temperature groups
+            for temp_group, acc in metrics["weather_accuracy"]["temperature"].items():
                 weather_rows.append({
                     "model": model.upper(),
-                    "temperature_group": temp_group,
+                    "weather_type": "temperature",
+                    "group": temp_group,
+                    "accuracy": acc
+                })
+            # Precipitation groups
+            for rain_group, acc in metrics["weather_accuracy"]["precipitation"].items():
+                weather_rows.append({
+                    "model": model.upper(),
+                    "weather_type": "precipitation",
+                    "group": rain_group,
                     "accuracy": acc
                 })
     if weather_rows:
@@ -379,12 +425,13 @@ def main():
         weather_df.to_csv(weather_output, index=False)
         print(f"    Weather-based accuracy: {weather_output}")
 
-    # 6. Final JSON report
+    # 7. Final JSON report
     report = {
         "total_transitions": len(df_transitions),
         "unique_windows_analyzed": len(df_unique_windows),
         "total_days_analyzed": len(df_days),
         "class_distribution": class_dist.to_dict(),
+        "feature_importance": feature_importance_df.to_dict(orient="records"),
         "models": results
     }
     report_path = os.path.join(output_dir, "final_analysis_report.json")
@@ -401,6 +448,10 @@ def main():
         print(f"  F1-Macro: {metrics['f1_macro']:.4f}")
         print(f"  Transition Accuracy: {metrics.get('transition_accuracy', 0):.4f}")
         print(f"  Stability Index: {metrics.get('stability_index', 0):.4f}")
+
+    print("\nFeature Importance (Random Forest):")
+    for idx, row in feature_importance_df.iterrows():
+        print(f"  {row['feature']}: {row['importance']:.4f}")
 
     print("\nDone.")
 
